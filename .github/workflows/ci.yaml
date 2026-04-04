@@ -17,6 +17,8 @@ jobs:
     permissions:
       contents: read
       packages: write
+    outputs:
+      tag: ${{ steps.vars.outputs.TAG }}
 
     steps:
       - name: Checkout
@@ -31,7 +33,7 @@ jobs:
 
       - name: Extract version tag
         id: vars
-        run: echo "TAG=v$(cat VERSION)" >> $GITHUB_OUTPUT
+        run: echo "TAG=v$(cat VERSION | tr -d '[:space:]')" >> $GITHUB_OUTPUT
 
       - name: Build & push API
         uses: docker/build-push-action@v5
@@ -68,21 +70,19 @@ jobs:
           token: ${{ secrets.GITOPS_TOKEN }}
           path: gitops
 
-      - name: Extract version tag
-        id: vars
-        run: echo "TAG=v$(cat VERSION)" >> $GITHUB_OUTPUT
-
       - name: Update image tags in me-dev overlay
         run: |
+          TAG=${{ needs.build-and-push.outputs.tag }}
           cd gitops
-          sed -i "s|newTag:.*# api|newTag: ${{ steps.vars.outputs.TAG }} # api|" k8s/overlays/me-dev/kustomization.yaml
-          sed -i "s|newTag:.*# web|newTag: ${{ steps.vars.outputs.TAG }} # web|" k8s/overlays/me-dev/kustomization.yaml
+          sed -i "s|newTag:.*# api|newTag: ${TAG} # api|" k8s/overlays/me-dev/kustomization.yaml
+          sed -i "s|newTag:.*# web|newTag: ${TAG} # web|" k8s/overlays/me-dev/kustomization.yaml
 
       - name: Commit and push
         run: |
+          TAG=${{ needs.build-and-push.outputs.tag }}
           cd gitops
           git config user.name "github-actions[bot]"
           git config user.email "github-actions[bot]@users.noreply.github.com"
           git add k8s/overlays/me-dev/kustomization.yaml
-          git commit -m "ci: update me-dev images to ${{ steps.vars.outputs.TAG }}" || echo "No changes"
+          git commit -m "ci: update me-dev images to ${TAG}" || echo "No changes"
           git push
